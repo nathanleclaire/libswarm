@@ -19,7 +19,13 @@ func main() {
 	app.Usage = "Compose distributed systems from lightweight services"
 	app.Version = "0.0.1"
 	app.Flags = []cli.Flag{}
-	app.Action = cmdDaemon
+	app.Commands = []cli.Command{
+		{
+			Name:   "backend",
+			Usage:  "Display the available backends.",
+			Action: cmdDaemon,
+		},
+	}
 	app.Run(os.Args)
 }
 
