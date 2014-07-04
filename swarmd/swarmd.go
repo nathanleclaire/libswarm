@@ -20,68 +20,77 @@ func main() {
 	app.Usage = "Compose distributed systems from lightweight services"
 	app.Version = "0.0.1"
 	app.Flags = []cli.Flag{}
+	app.Action = cmdDaemon
 	app.Commands = []cli.Command{
 		{
 			Name:   "backend",
-			Usage:  "Display the available backends.",
-			Action: cmdDaemon,
+			Usage:  "Display the available backends",
+			Action: cmdBackend,
 		},
 	}
 	app.Run(os.Args)
 }
 
-func cmdDaemon(c *cli.Context) {
-	app := libswarm.NewServer()
-	app.OnLog(func(args ...string) error {
-		log.Printf("%s\n", strings.Join(args, " "))
-		return nil
-	})
-	app.OnError(func(args ...string) error {
-		Fatalf("Fatal: %v", strings.Join(args[:1], ""))
-		return nil
-	})
+func cmdBackend(c *cli.Context) {
 	back := backends.New()
-	if len(c.Args()) == 0 {
-		names, err := back.Ls()
-		if err != nil {
-			Fatalf("ls: %v", err)
-		}
-		fmt.Println(strings.Join(names, "\n"))
-		return
-	}
-	var previousInstanceR libswarm.Receiver
-	// FIXME: refactor into a Pipeline
-	for idx, backendArg := range c.Args() {
-		bName, bArgs, err := parseCmd(backendArg)
-		if err != nil {
-			Fatalf("parse: %v", err)
-		}
-		_, backend, err := back.Attach(bName)
-		if err != nil {
-			Fatalf("%s: %v\n", bName, err)
-		}
-		instance, err := backend.Spawn(bArgs...)
-		if err != nil {
-			Fatalf("spawn %s: %v\n", bName, err)
-		}
-		instanceR, instanceW, err := instance.Attach("")
-		if err != nil {
-			Fatalf("attach: %v", err)
-		}
-		go func(r libswarm.Receiver, w libswarm.Sender, idx int) {
-			if r != nil {
-				libswarm.Copy(w, r)
-			}
-			w.Close()
-		}(previousInstanceR, instanceW, idx)
-		if err := instance.Start(); err != nil {
-			Fatalf("start: %v", err)
-		}
-		previousInstanceR = instanceR
-	}
-	_, err := libswarm.Copy(app, previousInstanceR)
+	names, err := back.Ls()
 	if err != nil {
-		Fatalf("copy: %v", err)
+		Fatalf("ls: %v", err)
+	}
+	fmt.Println(strings.Join(names, "\n"))
+	return
+}
+
+func cmdDaemon(c *cli.Context) {
+	if len(c.Args()) == 0 {
+		cli.ShowAppHelp(c)
+		return
+	} else {
+		app := libswarm.NewServer()
+		app.OnLog(func(args ...string) error {
+			log.Printf("%s\n", strings.Join(args, " "))
+			return nil
+		})
+		app.OnError(func(args ...string) error {
+			Fatalf("Fatal: %v", strings.Join(args[:1], ""))
+			return nil
+		})
+
+		back := backends.New()
+		var previousInstanceR libswarm.Receiver
+		// FIXME: refactor into a Pipeline
+		for idx, backendArg := range c.Args() {
+			bName, bArgs, err := parseCmd(backendArg)
+			if err != nil {
+				Fatalf("parse: %v", err)
+			}
+			_, backend, err := back.Attach(bName)
+			if err != nil {
+				Fatalf("%s: %v\n", bName, err)
+			}
+			instance, err := backend.Spawn(bArgs...)
+			if err != nil {
+				Fatalf("spawn %s: %v\n", bName, err)
+			}
+			instanceR, instanceW, err := instance.Attach("")
+			if err != nil {
+				Fatalf("attach: %v", err)
+			}
+			go func(r libswarm.Receiver, w libswarm.Sender, idx int) {
+				if r != nil {
+					libswarm.Copy(w, r)
+				}
+				w.Close()
+			}(previousInstanceR, instanceW, idx)
+			if err := instance.Start(); err != nil {
+				Fatalf("start: %v", err)
+			}
+			previousInstanceR = instanceR
+		}
+		_, err := libswarm.Copy(app, previousInstanceR)
+		if err != nil {
+			Fatalf("copy: %v", err)
+		}
 	}
 }
 
